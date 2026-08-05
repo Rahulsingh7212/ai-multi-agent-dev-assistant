@@ -15,6 +15,7 @@ from config.settings import settings
 from app.routes.chat import router as chat_router
 from app.routes.system import router as system_router
 from app.routes.rag import router as rag_router        # 🆕 NEW
+from app.routes.agent import router as agent_router          # 🆕 NEW
 
 
 logger = logging.getLogger(__name__)
@@ -24,17 +25,20 @@ logger = logging.getLogger(__name__)
 # ============================
 app = FastAPI(
     title=settings.APP_NAME,
-    version="0.3.0",  # Updated for Stage 2
+    version="0.4.0",  # Updated for Stage 2
     description=(
-        "🤖 AI Multi-Agent Developer Assistant\n\n"
-        "Stage 2: RAG + Vector Database (ChromaDB + HuggingFace Embeddings)\n\n"
-        "Endpoints:\n"
-        "- POST /api/v1/chat      — Chat with AI\n"
-        "- POST /api/v1/ingest    — Ingest PDFs into ChromaDB\n"
-        "- POST /api/v1/rag-query — Q&A over your documents\n"
-        "- GET  /api/v1/vectorstore-info — Vector store stats\n"
-        "- GET  /health           — System health check\n"
-    ),
+    "🤖 AI Multi-Agent Developer Assistant\n\n"
+    "Stage 3: Code Agent with LangGraph + Tools + Memory\n\n"
+    "Endpoints:\n"
+    "- POST /api/v1/agent/code   — Run Code Agent\n"
+    "- GET  /api/v1/agent/sessions — List sessions\n"
+    "- GET  /api/v1/agent/session/{id} — Get session history\n"
+    "- DELETE /api/v1/agent/session/{id} — Clear session\n"
+    "- POST /api/v1/chat         — Simple chat\n"
+    "- POST /api/v1/ingest       — Ingest documents\n"
+    "- POST /api/v1/rag-query    — RAG Q&A\n"
+    "- GET  /health              — Health check\n"
+    ), 
 )
 
 # ============================
@@ -54,16 +58,19 @@ app.add_middleware(
 app.include_router(system_router)
 app.include_router(chat_router)
 app.include_router(rag_router)          # 🆕 NEW
-
-logger.info(f"🚀 {settings.APP_NAME} v0.3.0 starting...")
+app.include_router(agent_router)        # 🆕 NEW
+logger.info(f"🚀 {settings.APP_NAME} v0.4.0 starting...")
 logger.info(f"🤖 LLM Model: {settings.LLM_MODEL}")
 
 
 @app.on_event("startup")
 async def startup_event():
     logger.info("✅ Application startup complete")
+    logger.info("🤖 Code Agent: 4 tools (generate, debug, explain, execute)")
+    logger.info("🧠 Conversation memory: active")
+
     if not settings.is_ready():
-        logger.warning("⚠️  GEMINI_API_KEY is missing — LLM calls will fail!")
+        logger.warning("⚠️ GEMINI_API_KEY is missing!")
 
 
 @app.on_event("shutdown")
