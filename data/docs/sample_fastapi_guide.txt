@@ -1,0 +1,65 @@
+FastAPI Developer Guide
+=======================
+
+Chapter 1: Introduction to FastAPI
+FastAPI is a modern, fast (high-performance), web framework for building APIs with Python 3.7+ based on standard Python type hints.
+The key features of FastAPI are:
+- Fast: Very high performance, on par with NodeJS and Go.
+- Fast to code: Increase the speed to develop features by about 200% to 300%.
+- Fewer bugs: Reduce about 40% of human-induced errors.
+- Intuitive: Great editor support. Completion everywhere.
+- Easy: Designed to be easy to use and learn.
+- Short: Minimize code duplication.
+
+Chapter 2: Installing FastAPI
+To install FastAPI with all optional dependencies and Uvicorn (an ASGI web server), run:
+pip install "fastapi[all]"
+You can also install it part by part:
+pip install fastapi
+pip install uvicorn[standard]
+
+Chapter 3: First API Example
+Create a file named main.py:
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+
+Run the server with:
+uvicorn main:app --reload
+Open your browser at http://127.0.0.1:8000/
+
+Chapter 4: Path Parameters
+You can declare path parameters with Python type hints:
+@app.get("/items/{item_id}")
+async def read_item(item_id: int):
+    return {"item_id": item_id}
+Because item_id is declared as int, you get automatic type validation and conversion.
+
+Chapter 5: Query Parameters
+When you declare other function parameters that are not path parameters, they are automatically interpreted as query parameters:
+@app.get("/items/")
+async def read_item(skip: int = 0, limit: int = 10):
+    return {"skip": skip, "limit": limit}
+
+Chapter 6: Request Body
+To declare a request body, you use Pydantic models:
+from pydantic import BaseModel
+
+class Item(BaseModel):
+    name: str
+    description: str | None = None
+    price: float
+    tax: float | None = None
+
+@app.post("/items/")
+async def create_item(item: Item):
+    return item
+
+Chapter 7: Automatic Documentation
+FastAPI automatically generates interactive API documentation using Swagger UI and ReDoc.
+- Swagger UI: Available at /docs
+- ReDoc: Available at /redoc
+The documentation is generated from your code, type hints, and Pydantic models automatically.
