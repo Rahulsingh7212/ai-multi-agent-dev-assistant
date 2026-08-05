@@ -49,3 +49,8 @@ logs/
 # Node (if any frontend later)
 # ============================================
 node_modules/
+
+# ============================================
+# ChromaDB (Vector Store Persistence Data)
+# ============================================
+data/chroma_db/
