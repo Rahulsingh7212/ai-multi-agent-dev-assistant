@@ -1,5 +1,7 @@
+from email.policy import default
+
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import List, Optional, Dict
 from enum import Enum
 
 
@@ -22,7 +24,7 @@ class ChatResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
-    api_keys: dict
+    api_keys: Dict[str, bool]
     model: str
     version: str
 
@@ -91,3 +93,43 @@ class RAGQueryResponse(BaseModel):
     sources: List[str] = Field(..., description="Source document chunks used")
     model: str = Field(..., description="LLM model used")
     chunks_retrieved: int = Field(..., description="Number of chunks retrieved")
+
+    # ============================
+# STAGE 3 SCHEMAS (NEW)
+# ============================
+
+class AgentRequest(BaseModel):
+    """Request for agent execution"""
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=5000,
+        description="User query for the code agent"
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Session ID for conversation memory (auto-generated if None)"
+    )
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "Generate a Python function to fetch data from an API",
+                "session_id": "my-session-001"
+            }
+        }
+
+class AgentResponse(BaseModel):
+    """Response from agent execution"""
+    response: str = Field(..., description="Agent's response")
+    tool_used: str = Field(..., description="Tool that was selected and executed")
+    agent_type: str = Field(..., description="Agent type that handled the query")
+    session_id: str = Field(..., description="Session ID for memory tracking")
+    rag_sources: List[str] = Field(default_factory=list, description="RAG source citations")
+    has_rag_context: bool = Field(..., description="Whether RAG context was used")
+    iterations: int = Field(..., description="Number of graph iterations")
+
+class SessionInfoResponse(BaseModel):
+    """Response for session info"""
+    session_id: str
+    message_count: int
+    history: List[Dict[str, str]]
