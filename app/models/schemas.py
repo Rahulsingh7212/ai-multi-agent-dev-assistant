@@ -1,7 +1,7 @@
 from email.policy import default
 
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
+from typing import Any, List, Optional, Dict
 from enum import Enum
 
 
@@ -176,3 +176,39 @@ class FileUploadResponse(BaseModel):
     content_length: int
     detected_type: str
     message: str
+
+    # ============================
+# STAGE 5 SCHEMAS (NEW)
+# ============================
+
+class MemoryStatsResponse(BaseModel):
+    """Response for memory statistics"""
+    backend: str
+    redis_connected: bool
+    total_sessions: int
+    total_user_mappings: int
+    max_conversation_turns: int
+    ttl_seconds: int
+
+class ToolRegistryResponse(BaseModel):
+    """Response for tool registry info"""
+    total_tools: int
+    total_agents: int
+    tools_per_agent: Dict[str, int]
+    categories: Dict[str, int]
+    tools: List[Dict[str, Any]]
+
+class RedisInfoResponse(BaseModel):
+    """Response for Redis info"""
+    status: str
+    version: Optional[str] = None
+    used_memory_human: Optional[str] = None
+    connected_clients: Optional[int] = None
+    total_keys: Optional[int] = None
+    uptime_in_seconds: Optional[int] = None
+
+class MultiAgentRequest(BaseModel):
+    """Request for multi-agent execution"""
+    query: str = Field(..., min_length=1, max_length=5000)
+    session_id: Optional[str] = Field(default=None)
+    user_id: Optional[str] = Field(default=None, description="User ID for memory isolation")

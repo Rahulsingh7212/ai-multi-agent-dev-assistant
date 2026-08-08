@@ -1,5 +1,5 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from app.agents.state import AgentState
 from config.settings import settings
 import json
@@ -128,7 +128,25 @@ Respond with JSON ONLY:
 The next_agent must be one of: code_agent, resume_agent, pdf_agent, github_agent, web_agent"""
 
         try:
-            response = self.llm.invoke([SystemMessage(content=routing_prompt)])
+            response = self.llm.invoke([SystemMessage(content=routing_prompt), HumanMessage(content=user_query),
+            ])
+
+            content = response.content
+
+            # Gemini/LangChain can return content as a list of blocks
+            if isinstance(content, list):
+                text_parts = []
+
+                for block in content:
+                    if isinstance(block, dict):
+                        text = block.get("text")
+                        if text:
+                            text_parts.append(text)
+                    elif isinstance(block, str):
+                        text_parts.append(block)
+
+                content = "".join(text_parts)
+            
             parsed = self._parse_json(response.content)
 
             next_agent = parsed.get("next_agent", "code_agent")
@@ -158,16 +176,34 @@ The next_agent must be one of: code_agent, resume_agent, pdf_agent, github_agent
             }
 
     def _parse_json(self, text: str) -> dict:
+        """Parse JSON from Gemini response."""
+
+        if isinstance(text, list):
+            parts = []
+
+            for block in text:
+                if isinstance(block, dict):
+                    value = block.get("text")
+                    if value:
+                        parts.append(value)
+                elif isinstance(block, str):
+                    parts.append(block)
+
+            text = "".join(parts)
+
+        if not isinstance(text, str):
+            text = str(text)
+
         text = re.sub(r'```json\s*', '', text)
         text = re.sub(r'```\s*', '', text)
         text = text.strip()
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
+            match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
             if match:
                 return json.loads(match.group())
-            raise
+            raise ValueError(f"Could not parse JSON from LLM response: {text}")
 
 
 # ============================
