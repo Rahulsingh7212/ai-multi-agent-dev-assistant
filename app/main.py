@@ -1,8 +1,5 @@
 import logging
 
-# ============================
-# Logging Setup
-# ============================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
@@ -14,36 +11,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from config.settings import settings
 from app.routes.chat import router as chat_router
 from app.routes.system import router as system_router
-from app.routes.rag import router as rag_router        # 🆕 NEW
-from app.routes.agent import router as agent_router          # 🆕 NEW
-
+from app.routes.rag import router as rag_router
+from app.routes.agent import router as agent_router
 
 logger = logging.getLogger(__name__)
 
-# ============================
-# FastAPI App
-# ============================
 app = FastAPI(
     title=settings.APP_NAME,
-    version="0.4.0",  # Updated for Stage 2
+    version="0.5.0",  # Stage 4
     description=(
-    "🤖 AI Multi-Agent Developer Assistant\n\n"
-    "Stage 3: Code Agent with LangGraph + Tools + Memory\n\n"
-    "Endpoints:\n"
-    "- POST /api/v1/agent/code   — Run Code Agent\n"
-    "- GET  /api/v1/agent/sessions — List sessions\n"
-    "- GET  /api/v1/agent/session/{id} — Get session history\n"
-    "- DELETE /api/v1/agent/session/{id} — Clear session\n"
-    "- POST /api/v1/chat         — Simple chat\n"
-    "- POST /api/v1/ingest       — Ingest documents\n"
-    "- POST /api/v1/rag-query    — RAG Q&A\n"
-    "- GET  /health              — Health check\n"
-    ), 
+        "🤖 AI Multi-Agent Developer Assistant\n\n"
+        "Stage 4: Multi-Agent Supervisor with 5 Specialist Agents\n\n"
+        "Agents:\n"
+        "- 🧑‍💻 Code Agent: Generate, debug, explain, execute code\n"
+        "- 📄 Resume Agent: Parse, analyze, improve resumes\n"
+        "- 📑 PDF Agent: Document Q&A, summarize, compare\n"
+        "- 🐙 GitHub Agent: Search repos, issues, PRs\n"
+        "- 🌐 Web Agent: Search, real-time info, news\n\n"
+        "Main Endpoint:\n"
+        "- POST /api/v1/agent/run — Supervisor auto-routes to best agent\n"
+    ),
 )
 
-# ============================
-# CORS Middleware
-# ============================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,25 +41,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ============================
-# Register Routers
-# ============================
 app.include_router(system_router)
 app.include_router(chat_router)
-app.include_router(rag_router)          # 🆕 NEW
-app.include_router(agent_router)        # 🆕 NEW
-logger.info(f"🚀 {settings.APP_NAME} v0.4.0 starting...")
-logger.info(f"🤖 LLM Model: {settings.LLM_MODEL}")
+app.include_router(rag_router)
+app.include_router(agent_router)
+
+logger.info(f"🚀 {settings.APP_NAME} v0.5.0 starting...")
 
 
 @app.on_event("startup")
 async def startup_event():
     logger.info("✅ Application startup complete")
-    logger.info("🤖 Code Agent: 4 tools (generate, debug, explain, execute)")
+    logger.info("🎯 Supervisor: 5 agents (code, resume, pdf, github, web)")
     logger.info("🧠 Conversation memory: active")
-
     if not settings.is_ready():
-        logger.warning("⚠️ GEMINI_API_KEY is missing!")
+        logger.warning("⚠️  GEMINI_API_KEY is missing!")
 
 
 @app.on_event("shutdown")

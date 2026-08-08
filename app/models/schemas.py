@@ -133,3 +133,46 @@ class SessionInfoResponse(BaseModel):
     session_id: str
     message_count: int
     history: List[Dict[str, str]]
+
+    # ============================
+# STAGE 4 SCHEMAS (NEW)
+# ============================
+
+class MultiAgentRequest(BaseModel):
+    """Request for multi-agent execution"""
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=5000,
+        description="User query — supervisor will route to the right agent"
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Session ID for conversation memory"
+    )
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "Search GitHub for popular FastAPI repositories",
+                "session_id": "my-session-001"
+            }
+        }
+
+class MultiAgentResponse(BaseModel):
+    """Response from multi-agent execution"""
+    response: str = Field(..., description="Agent's response")
+    agent_used: str = Field(..., description="Agent that handled the request")
+    tool_used: str = Field(..., description="Tool that was executed")
+    supervisor_reasoning: str = Field(..., description="Why supervisor chose this agent")
+    session_id: str = Field(..., description="Session ID")
+    rag_sources: List[str] = Field(default_factory=list)
+    has_rag_context: bool = Field(..., description="Whether RAG context was used")
+    iterations: int = Field(..., description="Graph iterations")
+
+class FileUploadResponse(BaseModel):
+    """Response after file upload"""
+    filename: str
+    file_size: int
+    content_length: int
+    detected_type: str
+    message: str
