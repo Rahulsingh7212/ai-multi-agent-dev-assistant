@@ -1,8 +1,5 @@
 import logging
 
-# ============================
-# Logging Setup
-# ============================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
@@ -14,36 +11,48 @@ from fastapi.middleware.cors import CORSMiddleware
 from config.settings import settings
 from app.routes.chat import router as chat_router
 from app.routes.system import router as system_router
-from app.routes.rag import router as rag_router        # 🆕 NEW
-from app.routes.agent import router as agent_router          # 🆕 NEW
+from app.routes.rag import router as rag_router
+from app.routes.agent import router as agent_router
+from app.routes.monitoring import router as monitoring_router    # 🆕 NEW
+from app.middleware.error_handler import (
+    ErrorHandlerMiddleware,
+    RequestLoggingMiddleware,
+    RateLimitMiddleware,
+)
 
 
 logger = logging.getLogger(__name__)
 
-# ============================
-# FastAPI App
-# ============================
 app = FastAPI(
     title=settings.APP_NAME,
-    version="0.4.0",  # Updated for Stage 2
+    version="0.6.0",  # Stage 5
     description=(
-    "🤖 AI Multi-Agent Developer Assistant\n\n"
-    "Stage 3: Code Agent with LangGraph + Tools + Memory\n\n"
-    "Endpoints:\n"
-    "- POST /api/v1/agent/code   — Run Code Agent\n"
-    "- GET  /api/v1/agent/sessions — List sessions\n"
-    "- GET  /api/v1/agent/session/{id} — Get session history\n"
-    "- DELETE /api/v1/agent/session/{id} — Clear session\n"
-    "- POST /api/v1/chat         — Simple chat\n"
-    "- POST /api/v1/ingest       — Ingest documents\n"
-    "- POST /api/v1/rag-query    — RAG Q&A\n"
-    "- GET  /health              — Health check\n"
-    ), 
+        "🤖 AI Multi-Agent Developer Assistant\n\n"
+        "Stage 5: Persistent Memory + Tool Registry\n\n"
+        "Features:\n"
+        "- Redis-backed conversation memory\n"
+        "- Per-user memory isolation\n"
+        "- Central tool registry (19 tools, 5 agents)\n"
+        "- Retry logic with exponential backoff\n"
+        "- Error handling middleware\n"
+        "- Request logging & rate limiting\n"
+    ),
 )
 
 # ============================
-# CORS Middleware
+# MIDDLEWARE (order matters!)
 # ============================
+
+# 1. Error handler (outermost — catches everything)
+app.add_middleware(ErrorHandlerMiddleware)
+
+# 2. Request logging
+app.add_middleware(RequestLoggingMiddleware)
+
+# 3. Rate limiting
+app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
+
+# 4. CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -53,24 +62,35 @@ app.add_middleware(
 )
 
 # ============================
-# Register Routers
+# REGISTER ROUTES
 # ============================
 app.include_router(system_router)
 app.include_router(chat_router)
-app.include_router(rag_router)          # 🆕 NEW
-app.include_router(agent_router)        # 🆕 NEW
-logger.info(f"🚀 {settings.APP_NAME} v0.4.0 starting...")
-logger.info(f"🤖 LLM Model: {settings.LLM_MODEL}")
+app.include_router(rag_router)
+app.include_router(agent_router)
+app.include_router(monitoring_router)          # 🆕 NEW
+
+logger.info(f"🚀 {settings.APP_NAME} v0.6.0 starting...")
 
 
 @app.on_event("startup")
 async def startup_event():
+    # Register all tools
+    from app.tools.register_all import register_all_tools
+    register_all_tools()
+
     logger.info("✅ Application startup complete")
-    logger.info("🤖 Code Agent: 4 tools (generate, debug, explain, execute)")
-    logger.info("🧠 Conversation memory: active")
+    logger.info(f"🎯 Supervisor: 5 agents (code, resume, pdf, github, web)")
+    logger.info(f"🧠 Memory backend: {settings.MEMORY_BACKEND}")
+    logger.info(f"🔧 Tool registry: initialized")
+
+    if settings.is_redis_ready():
+        logger.info("✅ Redis: connected")
+    else:
+        logger.warning("⚠️  Redis: disconnected — using in-memory fallback")
 
     if not settings.is_ready():
-        logger.warning("⚠️ GEMINI_API_KEY is missing!")
+        logger.warning("⚠️  GEMINI_API_KEY is missing!")
 
 
 @app.on_event("shutdown")

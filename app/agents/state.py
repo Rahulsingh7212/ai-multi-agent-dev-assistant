@@ -5,55 +5,64 @@ import operator
 
 class AgentState(TypedDict):
     """
-    Shared state that flows through all nodes in the LangGraph.
+    Shared state that flows through ALL nodes in the Multi-Agent Graph.
 
-    This is the 'memory' of the agent graph.
-    Every node reads from and writes to this state.
+    Updated for Stage 4: Added supervisor routing fields.
     """
 
     # ============================
     # Conversation History
     # ============================
-    # 'operator.add' means new messages are APPENDED
-    # instead of overwriting the list
     messages: Annotated[List[BaseMessage], operator.add]
 
     # ============================
     # Current Interaction
     # ============================
-    user_query: str                        # Original user question
+    user_query: str
     agent_type: str                        # Which agent is handling this
-    tool_name: Optional[str]               # Which tool was selected
-    tool_input: Optional[Dict[str, Any]]   # Input passed to the tool
-    tool_output: Optional[str]             # Result from the tool
+    tool_name: Optional[str]
+    tool_input: Optional[Dict[str, Any]]
+    tool_output: Optional[str]
+
+    # ============================
+    # Supervisor Routing
+    # ============================
+    next_agent: str                        # Supervisor decision: code|resume|pdf|github|web
+    supervisor_reasoning: Optional[str]    # Why supervisor chose this agent
+    agent_handoff: Optional[bool]          # True if agent needs to hand off to another
 
     # ============================
     # RAG Context
     # ============================
-    rag_context: Optional[str]             # Retrieved document context
-    rag_sources: Optional[List[str]]       # Source citations
+    rag_context: Optional[str]
+    rag_sources: Optional[List[str]]
+
+    # ============================
+    # File Upload Context
+    # ============================
+    uploaded_file_path: Optional[str]      # Path to uploaded file (resume, PDF)
+    uploaded_file_content: Optional[str]   # Extracted text content of uploaded file
 
     # ============================
     # Final Output
     # ============================
-    final_response: Optional[str]          # The answer to return to user
+    final_response: Optional[str]
 
     # ============================
     # Metadata
     # ============================
-    session_id: Optional[str]              # Session tracking
-    iteration_count: int                   # Prevent infinite loops
-    error: Optional[str]                   # Error message if any
+    session_id: Optional[str]
+    iteration_count: int
+    error: Optional[str]
 
 
 def create_initial_state(
     user_query: str,
     session_id: Optional[str] = None,
+    uploaded_file_path: Optional[str] = None,
+    uploaded_file_content: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Factory function to create a fresh AgentState
-    for a new conversation turn.
-    """
+    """Factory function to create a fresh AgentState."""
     return {
         "messages": [HumanMessage(content=user_query)],
         "user_query": user_query,
@@ -61,8 +70,13 @@ def create_initial_state(
         "tool_name": None,
         "tool_input": None,
         "tool_output": None,
+        "next_agent": "",
+        "supervisor_reasoning": None,
+        "agent_handoff": False,
         "rag_context": None,
         "rag_sources": None,
+        "uploaded_file_path": uploaded_file_path,
+        "uploaded_file_content": uploaded_file_content,
         "final_response": None,
         "session_id": session_id or "default",
         "iteration_count": 0,
