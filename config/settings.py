@@ -9,6 +9,7 @@ class Settings:
     # API Keys
     # ==================
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
     GITHUB_PAT: str = os.getenv("GITHUB_PAT", "")
     GITHUB_USERNAME: str = os.getenv("GITHUB_USERNAME", "")
@@ -24,7 +25,8 @@ class Settings:
     # ==================
     # LLM Config
     # ==================
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-1.5-flash")
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "groq")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.7"))
     LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "2048"))
     LLM_STREAMING: bool = os.getenv("LLM_STREAMING", "true").lower() == "true"
@@ -80,7 +82,10 @@ class Settings:
             return False
 
     def is_ready(self) -> bool:
-        return bool(self.GEMINI_API_KEY)
+        if self.LLM_PROVIDER.lower() == "groq":
+            return bool(self.GROQ_API_KEY)
+        else:
+            return bool(self.GEMINI_API_KEY)
 
     def is_redis_ready(self) -> bool:
         return self._check_redis()

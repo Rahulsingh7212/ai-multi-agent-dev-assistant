@@ -1,4 +1,4 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.tools import render_text_description
 
@@ -20,9 +20,7 @@ class GenericAgent:
     Reusable agent node builder.
 
     Each agent has:
-        router → tool_executor → response_generator
-
-    This class eliminates code duplication across agents.
+        router -> tool_executor -> response_generator
     """
 
     def __init__(
@@ -40,11 +38,11 @@ class GenericAgent:
 
         self.tool_descriptions = render_text_description(tools)
 
-        self.llm = ChatGoogleGenerativeAI(
+        self.llm = ChatGroq(
             model=settings.LLM_MODEL,
-            google_api_key=settings.GEMINI_API_KEY,
+            api_key=settings.GROQ_API_KEY,
             temperature=temperature,
-            max_output_tokens=settings.LLM_MAX_TOKENS,
+            max_tokens=settings.LLM_MAX_TOKENS,
         )
 
         logger.info(
@@ -74,7 +72,7 @@ class GenericAgent:
 
         rag_result = get_rag_context(
             user_query,
-            k=3
+            k=3,
         )
 
         rag_context = rag_result.get("context", "")
@@ -86,12 +84,51 @@ class GenericAgent:
 
         file_content = state.get(
             "uploaded_file_content",
-            ""
+            "",
         )
+
+        # ============================================================
+        # DIRECT RESUME FILE HANDLING
+        #
+        # If an actual resume file is uploaded and this is the
+        # resume agent, skip LLM tool-routing completely.
+        # ============================================================
+
+        if self.name == "resume_agent" and file_content:
+
+            logger.info(
+                "📄 Uploaded resume detected → "
+                "skipping LLM tool routing"
+            )
+
+            return {
+                **state,
+                "agent_type": "resume_agent",
+                "tool_name": "resume_parse",
+                "tool_input": {
+                    "resume_text": file_content,
+                },
+                "rag_context": rag_context,
+                "rag_sources": rag_sources,
+                "iteration_count": iteration,
+                "messages": [
+                    AIMessage(
+                        content=(
+                            "[resume_agent] → resume_parse "
+                            "(uploaded resume)"
+                        )
+                    )
+                ],
+            }
+
+        # --------------------------------------------------------
+        # File section for normal routing
+        # --------------------------------------------------------
 
         file_section = ""
 
         if file_content:
+
             file_section = (
                 "\nUPLOADED FILE CONTENT:\n"
                 f"{file_content[:3000]}\n\n"
@@ -105,6 +142,7 @@ class GenericAgent:
         rag_section = ""
 
         if rag_context:
+
             rag_section = (
                 "\nRELEVANT DOCUMENTATION:\n"
                 f"{rag_context}"
@@ -160,8 +198,10 @@ Only include parameters relevant to the selected tool.
 
         try:
 
-            # IMPORTANT:
-            # Gemini requires actual user content.
+            # ----------------------------------------------------
+            # Call Groq
+            # ----------------------------------------------------
+
             response = self.llm.invoke(
                 [
                     SystemMessage(
@@ -174,7 +214,7 @@ Only include parameters relevant to the selected tool.
             )
 
             # ----------------------------------------------------
-            # Normalize Gemini response
+            # Normalize response content
             # ----------------------------------------------------
 
             content = response.content
@@ -209,20 +249,23 @@ Only include parameters relevant to the selected tool.
 
             tool_name = parsed.get(
                 "tool_name",
-                self.tools[0].name
+                self.tools[0].name,
             )
 
             tool_input = parsed.get(
                 "tool_input",
-                {}
+                {},
             )
 
             reasoning = parsed.get(
                 "reasoning",
-                ""
+                "",
             )
 
+            # ----------------------------------------------------
             # Make sure tool_input is a dict
+            # ----------------------------------------------------
+
             if not isinstance(tool_input, dict):
                 tool_input = {}
 
@@ -255,18 +298,18 @@ Only include parameters relevant to the selected tool.
 
                 tool_input = self._normalize_code_generate_input(
                     tool_input,
-                    user_query
+                    user_query,
                 )
 
             # ----------------------------------------------------
-            # Inject RAG context only when appropriate
+            # Inject RAG context only when tool accepts it
             # ----------------------------------------------------
 
             if (
                 rag_context
                 and self._tool_accepts_parameter(
                     tool_name,
-                    "context"
+                    "context",
                 )
                 and "context" not in tool_input
             ):
@@ -281,7 +324,7 @@ Only include parameters relevant to the selected tool.
                 and self.name == "resume_agent"
                 and self._tool_accepts_parameter(
                     tool_name,
-                    "resume_text"
+                    "resume_text",
                 )
                 and "resume_text" not in tool_input
             ):
@@ -297,19 +340,12 @@ Only include parameters relevant to the selected tool.
 
             return {
                 **state,
-
                 "agent_type": self.name,
-
                 "tool_name": tool_name,
-
                 "tool_input": tool_input,
-
                 "rag_context": rag_context,
-
                 "rag_sources": rag_sources,
-
                 "iteration_count": iteration,
-
                 "messages": [
                     AIMessage(
                         content=(
@@ -329,29 +365,57 @@ Only include parameters relevant to the selected tool.
 
             fallback_tool = self.tools[0].name
 
-            fallback_input = self._build_fallback_input(
-                user_query
+            # ====================================================
+            # Resume Agent fallback
+            # ====================================================
+
+            if (
+                self.name == "resume_agent"
+                and file_content
+            ):
+                fallback_input = {
+                    "resume_text": file_content,
+                }
+
+            # ====================================================
+            # PDF Agent fallback
+            # ====================================================
+
+            elif (
+                self.name == "pdf_agent"
+                and file_content
+            ):
+                fallback_input = {
+                    "document_text": file_content,
+                    "question": user_query,
+                }
+
+            # ====================================================
+            # Other agents
+            # ====================================================
+
+            else:
+
+                fallback_input = self._build_fallback_input(
+                    user_query
+                )
+
+            logger.info(
+                f"⚡ {self.name} fallback → "
+                f"{fallback_tool}"
             )
 
             return {
                 **state,
-
                 "agent_type": self.name,
-
                 "tool_name": fallback_tool,
-
                 "tool_input": fallback_input,
-
                 "rag_context": rag_context,
-
                 "rag_sources": rag_sources,
-
                 "iteration_count": iteration,
-
                 "error": (
                     f"Routing fallback: {str(e)}"
                 ),
-
                 "messages": [
                     AIMessage(
                         content=(
@@ -368,10 +432,11 @@ Only include parameters relevant to the selected tool.
 
     def _build_fallback_input(
         self,
-        user_query: str
+        user_query: str,
     ) -> Dict[str, Any]:
         """
-        Build valid fallback input according to the agent/tool.
+        Build valid fallback input according
+        to the agent/tool.
         """
 
         if not self.tools:
@@ -387,7 +452,7 @@ Only include parameters relevant to the selected tool.
 
             return self._normalize_code_generate_input(
                 {},
-                user_query
+                user_query,
             )
 
         # --------------------------------------------------------
@@ -397,7 +462,7 @@ Only include parameters relevant to the selected tool.
         if tool_name == "code_debug":
 
             return {
-                "code": user_query
+                "code": user_query,
             }
 
         # --------------------------------------------------------
@@ -407,7 +472,7 @@ Only include parameters relevant to the selected tool.
         if tool_name == "code_explain":
 
             return {
-                "code": user_query
+                "code": user_query,
             }
 
         # --------------------------------------------------------
@@ -417,7 +482,7 @@ Only include parameters relevant to the selected tool.
         if tool_name == "code_execute":
 
             return {
-                "code": user_query
+                "code": user_query,
             }
 
         # --------------------------------------------------------
@@ -427,7 +492,7 @@ Only include parameters relevant to the selected tool.
         if self.name == "resume_agent":
 
             return {
-                "resume_text": user_query
+                "resume_text": user_query,
             }
 
         # --------------------------------------------------------
@@ -435,7 +500,7 @@ Only include parameters relevant to the selected tool.
         # --------------------------------------------------------
 
         return {
-            "query": user_query
+            "query": user_query,
         }
 
     # ============================================================
@@ -445,7 +510,7 @@ Only include parameters relevant to the selected tool.
     def _normalize_code_generate_input(
         self,
         tool_input: Dict[str, Any],
-        user_query: str
+        user_query: str,
     ) -> Dict[str, Any]:
         """
         Ensure code_generate always receives:
@@ -456,7 +521,6 @@ Only include parameters relevant to the selected tool.
         if not isinstance(tool_input, dict):
             tool_input = {}
 
-        # Try different possible names generated by LLM
         language = (
             tool_input.get("language")
             or tool_input.get("lang")
@@ -482,7 +546,7 @@ Only include parameters relevant to the selected tool.
 
     def _detect_language(
         self,
-        query: str
+        query: str,
     ) -> str:
         """
         Detect programming language from user query.
@@ -514,7 +578,6 @@ Only include parameters relevant to the selected tool.
             if keyword in text:
                 return language
 
-        # Default
         return "Python"
 
     # ============================================================
@@ -524,7 +587,7 @@ Only include parameters relevant to the selected tool.
     def _tool_accepts_parameter(
         self,
         tool_name: str,
-        parameter: str
+        parameter: str,
     ) -> bool:
 
         tool = self.tool_map.get(tool_name)
@@ -542,7 +605,7 @@ Only include parameters relevant to the selected tool.
             fields = getattr(
                 schema,
                 "model_fields",
-                {}
+                {},
             )
 
             return parameter in fields
@@ -557,7 +620,7 @@ Only include parameters relevant to the selected tool.
 
     def execute_tool(
         self,
-        state: AgentState
+        state: AgentState,
     ) -> AgentState:
         """
         Execute selected tool.
@@ -565,12 +628,12 @@ Only include parameters relevant to the selected tool.
 
         tool_name = state.get(
             "tool_name",
-            ""
+            "",
         )
 
         tool_input = state.get(
             "tool_input",
-            {}
+            {},
         )
 
         logger.info(
@@ -591,7 +654,6 @@ Only include parameters relevant to the selected tool.
 
                 return {
                     **state,
-
                     "tool_output": (
                         f"Unknown tool: {tool_name}"
                     ),
@@ -608,9 +670,7 @@ Only include parameters relevant to the selected tool.
 
             return {
                 **state,
-
                 "tool_output": result,
-
                 "messages": [
                     AIMessage(
                         content=(
@@ -629,11 +689,9 @@ Only include parameters relevant to the selected tool.
 
             return {
                 **state,
-
                 "tool_output": (
                     f"Tool error: {str(e)}"
                 ),
-
                 "messages": [
                     AIMessage(
                         content=(
@@ -650,7 +708,7 @@ Only include parameters relevant to the selected tool.
 
     def generate_response(
         self,
-        state: AgentState
+        state: AgentState,
     ) -> AgentState:
         """
         Generate final response from tool output.
@@ -658,13 +716,91 @@ Only include parameters relevant to the selected tool.
 
         tool_output = state.get(
             "tool_output",
-            ""
+            "",
         )
 
         tool_name = state.get(
             "tool_name",
-            ""
+            "",
         )
+
+        # ----------------------------------------------------
+# Extract structured Web results
+# ----------------------------------------------------
+
+        web_results = []
+
+        if (
+            self.name == "web_agent"
+            and tool_output
+            and tool_name in {
+                "web_search",
+                "web_search_detailed",
+                "web_get_latest_news",
+            }
+        ):
+            try:
+                parsed_web_output = json.loads(
+                    str(tool_output)
+                )
+
+                if isinstance(parsed_web_output, dict):
+                    web_results = parsed_web_output.get(
+                        "results",
+                        []
+                    )
+
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "⚠️ Could not parse structured web results"
+                )
+
+
+        # ----------------------------------------------------
+# Extract structured GitHub results
+# ----------------------------------------------------
+
+        github_results = []
+
+        if (
+            self.name == "github_agent"
+            and tool_output
+            and tool_name in {
+                "github_search_repos",
+                "github_get_repo_info",
+                "github_get_issues",
+                "github_get_pull_requests",
+                "github_get_commits",
+                "github_get_contributors",
+                "github_get_code",
+                "github_get_readme",
+                "github_get_wiki",
+                "github_get_releases",
+                "github_get_topics",
+                "github_get_languages",
+                "github_get_license",
+                "github_get_branches",
+                "github_get_tags",
+                "github_get_actions",
+                "github_get_projects",
+                "github_get_discussions",
+                "github_get_milestones",
+            }
+        ):
+            try:
+                parsed_github_output = json.loads(
+                    str(tool_output)
+                )
+
+                if isinstance(parsed_github_output, dict):
+                    github_results = parsed_github_output
+
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "⚠️ Could not parse structured GitHub results"
+                )
+
+
 
         logger.info(
             f"📝 {self.name} generating final response"
@@ -683,6 +819,56 @@ Generate a comprehensive and helpful response
 based on the tool output.
 
 Format the response clearly using markdown.
+
+IMPORTANT FORMATTING RULES:
+
+- Use Markdown only.
+- Do NOT use HTML tags such as <br>, <div>, <p>, <table>, etc.
+- Never write literal HTML tags in the response.
+- Use clear Markdown headings and bullet points.
+- Do not invent information that is not present in the document.
+
+- For work experience, prefer headings and bullet points instead of wide Markdown tables.
+- For skills, grouped bullet lists are preferred over very wide tables.
+
+- Do not infer personal information unless absolutely necessary.
+- Clearly label any inferred information as "Inferred".
+
+For resume analysis, structure the response with these sections
+when applicable:
+
+## Resume Summary
+
+## Strengths
+
+## Weaknesses
+
+## Skills
+
+## Experience
+
+## Education
+
+## ATS Recommendations
+
+## Improvement Suggestions
+
+- Prefer bullet points over wide tables.
+- Do not invent resume information.
+
+
+Do not invent information that is not present in the resume.
+
+For PDF Agent:
+- Use sections such as:
+## Document Summary
+## Key Points
+## Important Information
+## Detailed Analysis
+## Conclusion
+- Prefer bullet points for important facts.
+- Keep the summary concise and easy to scan.
+- Do not invent facts that are not present in the document.
 """
 
         try:
@@ -700,10 +886,13 @@ Format the response clearly using markdown.
 
             final_response = response.content
 
-            # Gemini can return list content
+            # ----------------------------------------------------
+            # Normalize response
+            # ----------------------------------------------------
+
             if isinstance(
                 final_response,
-                list
+                list,
             ):
 
                 parts = []
@@ -712,7 +901,7 @@ Format the response clearly using markdown.
 
                     if isinstance(
                         block,
-                        dict
+                        dict,
                     ):
 
                         text = block.get(
@@ -724,7 +913,7 @@ Format the response clearly using markdown.
 
                     elif isinstance(
                         block,
-                        str
+                        str,
                     ):
 
                         parts.append(block)
@@ -733,15 +922,20 @@ Format the response clearly using markdown.
 
             if not isinstance(
                 final_response,
-                str
+                str,
             ):
+
                 final_response = str(
                     final_response
                 )
 
+            # ----------------------------------------------------
+            # RAG sources
+            # ----------------------------------------------------
+
             rag_sources = state.get(
                 "rag_sources",
-                []
+                [],
             )
 
             if rag_sources:
@@ -753,9 +947,9 @@ Format the response clearly using markdown.
 
             return {
                 **state,
-
                 "final_response": final_response,
-
+                "web_results": web_results,
+                "github_results": github_results,
                 "messages": [
                     AIMessage(
                         content=final_response
@@ -771,11 +965,11 @@ Format the response clearly using markdown.
 
             return {
                 **state,
-
                 "final_response": (
                     f"Error: {str(e)}"
                 ),
-
+                "github_results": [],
+                "web_results": [],
                 "messages": [
                     AIMessage(
                         content=f"Error: {str(e)}"
@@ -789,13 +983,17 @@ Format the response clearly using markdown.
 
     def _parse_json(
         self,
-        text
+        text: str,
     ) -> dict:
         """
-        Robust JSON parser for Gemini responses.
+        Safely parse JSON from an LLM response.
+
+        Handles:
+        - Markdown code fences
+        - List-based content
+        - Invalid control characters
         """
 
-        # Gemini may return content as a list
         if isinstance(text, list):
 
             parts = []
@@ -816,23 +1014,32 @@ Format the response clearly using markdown.
             text = "".join(parts)
 
         if not isinstance(text, str):
-
             text = str(text)
+
+        text = text.strip()
+
+        # --------------------------------------------------------
+        # Remove markdown fences
+        # --------------------------------------------------------
 
         text = re.sub(
             r"```json\s*",
             "",
             text,
-            flags=re.IGNORECASE
+            flags=re.IGNORECASE,
         )
 
         text = re.sub(
             r"```\s*",
             "",
-            text
+            text,
         )
 
         text = text.strip()
+
+        # --------------------------------------------------------
+        # Normal JSON attempt
+        # --------------------------------------------------------
 
         try:
 
@@ -840,19 +1047,46 @@ Format the response clearly using markdown.
 
         except json.JSONDecodeError:
 
-            match = re.search(
-                r"\{.*\}",
-                text,
-                re.DOTALL
-            )
+            pass
 
-            if match:
+        # --------------------------------------------------------
+        # Extract JSON object
+        # --------------------------------------------------------
 
-                return json.loads(
-                    match.group()
-                )
+        match = re.search(
+            r"\{.*\}",
+            text,
+            re.DOTALL,
+        )
+
+        if not match:
 
             raise ValueError(
-                f"Could not parse JSON from "
-                f"LLM response: {text}"
+                "Could not find JSON object in "
+                f"response: {text}"
+            )
+
+        json_text = match.group()
+
+        # --------------------------------------------------------
+        # Remove invalid control characters
+        # --------------------------------------------------------
+
+        json_text = re.sub(
+            r"[\x00-\x08\x0B\x0C\x0E-\x1F]",
+            " ",
+            json_text,
+        )
+
+        try:
+
+            return json.loads(
+                json_text
+            )
+
+        except json.JSONDecodeError as e:
+
+            raise ValueError(
+                "Could not parse JSON from "
+                f"LLM response: {e}"
             )

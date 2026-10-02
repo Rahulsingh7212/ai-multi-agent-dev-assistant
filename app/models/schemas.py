@@ -1,5 +1,3 @@
-from email.policy import default
-
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional, Dict
 from enum import Enum
@@ -138,25 +136,7 @@ class SessionInfoResponse(BaseModel):
 # STAGE 4 SCHEMAS (NEW)
 # ============================
 
-class MultiAgentRequest(BaseModel):
-    """Request for multi-agent execution"""
-    query: str = Field(
-        ...,
-        min_length=1,
-        max_length=5000,
-        description="User query — supervisor will route to the right agent"
-    )
-    session_id: Optional[str] = Field(
-        default=None,
-        description="Session ID for conversation memory"
-    )
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "Search GitHub for popular FastAPI repositories",
-                "session_id": "my-session-001"
-            }
-        }
+
 
 class MultiAgentResponse(BaseModel):
     """Response from multi-agent execution"""
@@ -165,6 +145,14 @@ class MultiAgentResponse(BaseModel):
     tool_used: str = Field(..., description="Tool that was executed")
     supervisor_reasoning: str = Field(..., description="Why supervisor chose this agent")
     session_id: str = Field(..., description="Session ID")
+    web_results: List[Dict[str, Any]] = Field(
+    default_factory=list,
+    description="Structured web search results"
+)
+    github_results: Any = Field(
+    default_factory=dict,
+    description="Structured GitHub results"
+)
     rag_sources: List[str] = Field(default_factory=list)
     has_rag_context: bool = Field(..., description="Whether RAG context was used")
     iterations: int = Field(..., description="Graph iterations")
@@ -190,6 +178,44 @@ class MemoryStatsResponse(BaseModel):
     max_conversation_turns: int
     ttl_seconds: int
 
+class MultiAgentRequest(BaseModel):
+    """Request for multi-agent execution."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=5000,
+        description="User query"
+    )
+
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Session ID for conversation memory"
+    )
+
+    user_id: Optional[str] = Field(
+        default=None,
+        description="User ID for memory isolation"
+    )
+
+    selected_agent: Optional[str] = Field(
+        default=None,
+        description=(
+            "Agent selected by the user. "
+            "Use None for automatic supervisor routing."
+        )
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "Analyze my resume",
+                "session_id": "my-session-001",
+                "user_id": "user-001",
+                "selected_agent": "resume_agent"
+            }
+        }
+
 class ToolRegistryResponse(BaseModel):
     """Response for tool registry info"""
     total_tools: int
@@ -207,8 +233,3 @@ class RedisInfoResponse(BaseModel):
     total_keys: Optional[int] = None
     uptime_in_seconds: Optional[int] = None
 
-class MultiAgentRequest(BaseModel):
-    """Request for multi-agent execution"""
-    query: str = Field(..., min_length=1, max_length=5000)
-    session_id: Optional[str] = Field(default=None)
-    user_id: Optional[str] = Field(default=None, description="User ID for memory isolation")

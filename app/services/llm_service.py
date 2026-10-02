@@ -1,4 +1,4 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.callbacks import AsyncCallbackHandler
 from config.settings import settings
@@ -23,23 +23,23 @@ class LLMService:
         """Initialize LLM instances (normal + streaming)"""
         try:
             # Normal LLM (for non-streaming responses)
-            self._llm = ChatGoogleGenerativeAI(
+            self._llm = ChatGroq(
                 model=settings.LLM_MODEL,
-                google_api_key=settings.GEMINI_API_KEY,
+                api_key=settings.GROQ_API_KEY,
                 temperature=settings.LLM_TEMPERATURE,
-                max_output_tokens=settings.LLM_MAX_TOKENS,
+                max_tokens=settings.LLM_MAX_TOKENS,
             )
 
             # Streaming LLM (for SSE responses)
-            self._streaming_llm = ChatGoogleGenerativeAI(
+            self._streaming_llm = ChatGroq(
                 model=settings.LLM_MODEL,
-                google_api_key=settings.GEMINI_API_KEY,
+                api_key=settings.GROQ_API_KEY,
                 temperature=settings.LLM_TEMPERATURE,
-                max_output_tokens=settings.LLM_MAX_TOKENS,
+                max_tokens=settings.LLM_MAX_TOKENS,
                 streaming=True,
             )
 
-            logger.info(f"✅ LLM initialized: {settings.LLM_MODEL}")
+            logger.info(f"✅ LLM initialized:{settings.LLM_PROVIDER} / {settings.LLM_MODEL}")
 
         except Exception as e:
             logger.error(f"❌ LLM initialization failed: {e}")
