@@ -1,4 +1,4 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import render_text_description
 from app.agents.state import AgentState, create_initial_state
@@ -27,11 +27,11 @@ class CodeAgent:
     """
 
     def __init__(self):
-        self.llm = ChatGoogleGenerativeAI(
+        self.llm = ChatGroq(
             model=settings.LLM_MODEL,
-            google_api_key=settings.GEMINI_API_KEY,
+            api_key=settings.GROQ_API_KEY,
             temperature=0.3,  # Lower temperature for code tasks
-            max_output_tokens=settings.LLM_MAX_TOKENS,
+            max_tokens=settings.LLM_MAX_TOKENS,
         )
 
         self.tools = CODE_AGENT_TOOLS

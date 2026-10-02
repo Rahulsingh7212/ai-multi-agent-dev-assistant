@@ -20,13 +20,14 @@ class AgentService:
 
     @general_retry
     def run_agent(
-        self,
-        query: str,
-        session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-        uploaded_file_path: Optional[str] = None,
-        uploaded_file_content: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    self,
+    query: str,
+    session_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    uploaded_file_path: Optional[str] = None,
+    uploaded_file_content: Optional[str] = None,
+    selected_agent: Optional[str] = None,
+) -> Dict[str, Any]:
         """
         Run the Multi-Agent Supervisor Graph with persistent memory.
         """
@@ -48,11 +49,12 @@ class AgentService:
 
         # Create initial state
         initial_state = create_initial_state(
-            user_query=query,
-            session_id=session_id,
-            uploaded_file_path=uploaded_file_path,
-            uploaded_file_content=uploaded_file_content,
-        )
+    user_query=query,
+    session_id=session_id,
+    uploaded_file_path=uploaded_file_path,
+    uploaded_file_content=uploaded_file_content,
+    selected_agent=selected_agent,
+)
 
         # Load conversation history from persistent memory
         history = persistent_memory.get_history(
@@ -70,6 +72,11 @@ class AgentService:
             next_agent = final_state.get("next_agent", "unknown")
             tool_used = final_state.get("tool_name", "unknown")
             supervisor_reasoning = final_state.get("supervisor_reasoning", "")
+            web_results = final_state.get("web_results", [])
+            github_results = final_state.get(
+    "github_results",
+    []
+)
 
             # Store AI response in persistent memory
             persistent_memory.add_message(
@@ -82,10 +89,13 @@ class AgentService:
             result = {
                 "response": response,
                 "agent_used": next_agent,
+                "selected_agent": selected_agent,
                 "tool_used": tool_used,
                 "supervisor_reasoning": supervisor_reasoning,
                 "session_id": session_id,
                 "user_id": user_id,
+                "web_results": web_results,
+                "github_results": github_results,
                 "rag_sources": final_state.get("rag_sources", []),
                 "has_rag_context": final_state.get("rag_context") is not None,
                 "iterations": final_state.get("iteration_count", 0),
@@ -113,6 +123,9 @@ class AgentService:
             return {
                 "response": f"I encountered an error: {str(e)}",
                 "agent_used": "error",
+                "selected_agent": selected_agent,
+                "web_results": [],
+                "github_results": [],
                 "tool_used": "error",
                 "supervisor_reasoning": "",
                 "session_id": session_id,

@@ -1,68 +1,89 @@
 from langchain_core.tools import tool
 from tavily import TavilyClient
 from config.settings import settings
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
+
+def _normalize_search_results(results: dict) -> List[Dict[str, Any]]:
+    """
+    Convert Tavily results into a clean frontend-friendly structure.
+    """
+    normalized = []
+
+    for item in results.get("results", []):
+        normalized.append({
+            "title": item.get("title", "No Title"),
+            "url": item.get("url", ""),
+            "content": item.get("content", "No content"),
+            "score": item.get("score"),
+            "published_date": item.get("published_date"),
+        })
+
+    return normalized
 
 
 @tool
 def web_search(query: str, max_results: int = 5) -> str:
     """
     Search the web for real-time information using Tavily.
-
-    Args:
-        query: Search query string
-        max_results: Maximum number of results
-
-    Returns:
-        Search results as formatted string
+    Returns JSON string containing structured search results.
     """
     logger.info(f"🔧 web_search: {query}")
 
     try:
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        client = TavilyClient(
+            api_key=settings.TAVILY_API_KEY
+        )
+
         results = client.search(
             query=query,
             max_results=max_results,
             search_depth="basic",
         )
 
-        if not results.get("results"):
-            return "No search results found."
+        normalized = _normalize_search_results(results)
 
-        formatted = []
-        for r in results["results"]:
-            formatted.append(
-                f"• {r.get('title', 'No Title')}\n"
-                f"  URL: {r.get('url', 'N/A')}\n"
-                f"  {r.get('content', 'No content')[:300]}"
-            )
+        if not normalized:
+            return '{"results": [], "message": "No search results found."}'
 
-        return "\n\n".join(formatted)
+        import json
+
+        return json.dumps({
+            "results": normalized,
+            "query": query,
+            "result_count": len(normalized),
+        })
 
     except Exception as e:
-        return f"Web search error: {str(e)}"
+        import json
+
+        return json.dumps({
+            "results": [],
+            "query": query,
+            "error": str(e),
+        })
 
 
 @tool
-def web_search_detailed(query: str, max_results: int = 3) -> str:
+def web_search_detailed(
+    query: str,
+    max_results: int = 3,
+) -> str:
     """
-    Perform a detailed/advanced web search using Tavily.
-    Returns more comprehensive results with extracted content.
-
-    Args:
-        query: Search query string
-        max_results: Maximum number of results
-
-    Returns:
-        Detailed search results
+    Perform a detailed web search using Tavily.
+    Returns structured JSON.
     """
-    logger.info(f"🔧 web_search_detailed: {query}")
+    logger.info(
+        f"🔧 web_search_detailed: {query}"
+    )
 
     try:
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        client = TavilyClient(
+            api_key=settings.TAVILY_API_KEY
+        )
+
         results = client.search(
             query=query,
             max_results=max_results,
@@ -70,64 +91,80 @@ def web_search_detailed(query: str, max_results: int = 3) -> str:
             include_answer=True,
         )
 
-        answer = results.get("answer", "")
-        output_parts = []
+        normalized = _normalize_search_results(results)
 
-        if answer:
-            output_parts.append(f"**Direct Answer:** {answer}\n")
+        import json
 
-        output_parts.append("**Sources:**")
-        for r in results.get("results", []):
-            output_parts.append(
-                f"\n• {r.get('title', 'No Title')}\n"
-                f"  URL: {r.get('url', 'N/A')}\n"
-                f"  {r.get('content', 'No content')[:500]}"
-            )
-
-        return "\n".join(output_parts) if output_parts else "No results found."
+        return json.dumps({
+            "query": query,
+            "answer": results.get("answer", ""),
+            "results": normalized,
+            "result_count": len(normalized),
+        })
 
     except Exception as e:
-        return f"Detailed web search error: {str(e)}"
+        import json
+
+        return json.dumps({
+            "query": query,
+            "answer": "",
+            "results": [],
+            "error": str(e),
+        })
 
 
 @tool
-def web_get_latest_news(topic: str, max_results: int = 5) -> str:
+def web_get_latest_news(
+    topic: str,
+    max_results: int = 5,
+) -> str:
     """
     Get the latest news about a specific topic.
-
-    Args:
-        topic: News topic to search for
-        max_results: Maximum number of articles
-
-    Returns:
-        Latest news articles
+    Returns structured JSON.
     """
-    logger.info(f"🔧 web_get_latest_news: {topic}")
+    logger.info(
+        f"🔧 web_get_latest_news: {topic}"
+    )
 
     try:
-        client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        client = TavilyClient(
+            api_key=settings.TAVILY_API_KEY
+        )
+
         results = client.search(
-            query=f"latest news {topic} 2025",
+            query=f"latest news {topic}",
             max_results=max_results,
             search_depth="basic",
             topic="news",
         )
 
-        if not results.get("results"):
-            return f"No recent news found for: {topic}"
+        normalized = _normalize_search_results(results)
 
-        formatted = []
-        for r in results["results"]:
-            formatted.append(
-                f"• {r.get('title', 'No Title')}\n"
-                f"  URL: {r.get('url', 'N/A')}\n"
-                f"  {r.get('content', 'No content')[:250]}"
-            )
+        import json
 
-        return "\n\n".join(formatted)
+        if not normalized:
+            return json.dumps({
+                "topic": topic,
+                "results": [],
+                "message": (
+                    f"No recent news found for: {topic}"
+                ),
+            })
+
+        return json.dumps({
+            "topic": topic,
+            "results": normalized,
+            "result_count": len(normalized),
+        })
 
     except Exception as e:
-        return f"News search error: {str(e)}"
+        import json
+
+        return json.dumps({
+            "topic": topic,
+            "results": [],
+            "error": str(e),
+        })
 
 
 # ============================

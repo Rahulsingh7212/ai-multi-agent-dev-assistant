@@ -47,10 +47,11 @@ async def run_multi_agent(request: MultiAgentRequest):
     """
     try:
         result = agent_service.run_agent(
-            query=request.query,
-            session_id=request.session_id,
-            user_id=request.user_id,
-        )
+    query=request.query,
+    session_id=request.session_id,
+    user_id=request.user_id,
+    selected_agent=request.selected_agent,
+)
 
         return MultiAgentResponse(**result)
 
@@ -168,11 +169,16 @@ async def run_agent_with_file(
                 query = "Summarize this document"
 
         result = agent_service.run_agent(
-            query=query,
-            session_id=session_id,
-            uploaded_file_path=file_path,
-            uploaded_file_content=file_content,
-        )
+    query=query,
+    session_id=session_id,
+    uploaded_file_path=file_path,
+    uploaded_file_content=file_content,
+    selected_agent=(
+        "resume_agent"
+        if "resume" in query.lower()
+        else "pdf_agent"
+    ),
+)
 
         return MultiAgentResponse(**result)
 
@@ -200,6 +206,8 @@ async def run_code_agent(request: AgentRequest):
         result = agent_service.run_agent(
             query=request.query,
             session_id=request.session_id,
+            user_id=request.user_id,
+            selected_agent="code_agent",
         )
 
         return AgentResponse(
@@ -387,3 +395,128 @@ async def clear_session(session_id: str):
             status_code=500,
             detail=str(e),
         )
+
+# ============================================================
+# STREAMING AGENT RESPONSE (SSE)
+# ============================================================
+
+@router.post(
+    "/agent/stream",
+    summary="Stream agent response (SSE)",
+    description="Stream multi-agent response in real-time via SSE",
+)
+async def stream_agent(request: MultiAgentRequest):
+    """
+    SSE streaming for multi-agent responses.
+
+    The agent currently runs normally and the final response
+    is then sent in small chunks to create a streaming effect.
+    """
+    from sse_starlette.sse import EventSourceResponse
+    import json
+    import uuid
+
+    session_id = request.session_id or str(uuid.uuid4())
+
+    async def event_generator():
+
+        # ============================
+        # START EVENT
+        # ============================
+
+        yield {
+            "event": "start",
+            "data": json.dumps({
+                "session_id": session_id,
+                "agent": "supervisor",
+            }),
+        }
+
+        try:
+            # ============================
+            # RUN MULTI-AGENT
+            # ============================
+
+            result = agent_service.run_agent(
+                query=request.query,
+                session_id=session_id,
+                user_id=request.user_id,
+                selected_agent=request.selected_agent,
+            )
+
+            # ============================
+            # GET RESPONSE
+            # ============================
+
+            response_text = result.get("response", "")
+
+            if not isinstance(response_text, str):
+                response_text = str(response_text)
+
+            # ============================
+            # STREAM RESPONSE
+            # ============================
+
+            chunk_size = 3
+
+            for i in range(0, len(response_text), chunk_size):
+
+                chunk = response_text[i:i + chunk_size]
+
+                yield {
+                    "event": "chunk",
+                    "data": json.dumps({
+                        "content": chunk,
+                    }),
+                }
+
+            # ============================
+            # COMPLETE EVENT
+            # ============================
+
+            yield {
+                "event": "complete",
+                "data": json.dumps({
+                    "session_id": session_id,
+                    "agent_used": result.get(
+                        "agent_used",
+                        "",
+                    ),
+                    "tool_used": result.get(
+                        "tool_used",
+                        "",
+                    ),
+                    "supervisor_reasoning": result.get(
+                        "supervisor_reasoning",
+                        "",
+                    ),
+                    "web_results": result.get(
+            "web_results",
+            []
+        ),
+
+        "github_results": result.get(
+    "github_results",
+    {}
+),
+                    "total_chars": len(response_text),
+                }),
+            }
+
+        except Exception as e:
+
+            logger.error(
+                f"❌ Agent SSE streaming error: {e}"
+            )
+
+            yield {
+                "event": "error",
+                "data": json.dumps({
+                    "error": str(e),
+                }),
+            }
+
+    return EventSourceResponse(
+        event_generator(),
+        media_type="text/event-stream",
+    )

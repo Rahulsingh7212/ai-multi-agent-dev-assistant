@@ -125,3 +125,58 @@ async def _generate_sse(
             "event": "error",
             "data": json.dumps({"error": str(e)})
         }
+
+@router.post(
+    "/chat/stream",
+    summary="Stream chat response (SSE)",
+    description="Stream LLM response chunks in real-time via Server-Sent Events",
+)
+async def chat_stream(request: ChatRequest):
+    """SSE streaming endpoint optimized for frontend consumption"""
+    from sse_starlette.sse import EventSourceResponse
+    import json
+    import uuid
+
+    session_id = request.session_id or str(uuid.uuid4())
+
+    async def event_generator():
+        # Send start event
+        yield {
+            "event": "start",
+            "data": json.dumps({
+                "session_id": session_id,
+                "model": llm_service.model_name,
+            })
+        }
+
+        try:
+            full_response = ""
+
+            async for chunk in llm_service.chat_stream(request.message):
+                full_response += chunk
+
+                yield {
+                    "event": "chunk",
+                    "data": json.dumps({"content": chunk})
+                }
+
+            # Send complete event
+            yield {
+                "event": "complete",
+                "data": json.dumps({
+                    "session_id": session_id,
+                    "total_chars": len(full_response),
+                    "model": llm_service.model_name,
+                })
+            }
+
+        except Exception as e:
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": str(e)})
+            }
+
+    return EventSourceResponse(
+        event_generator(),
+        media_type="text/event-stream",
+    )
